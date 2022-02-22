@@ -9,7 +9,7 @@ from TaxiFareModel.data import get_data, clean_data
 from sklearn.model_selection import train_test_split
 
 class Trainer():
-    def __init__(self, X, y):
+    def __init__(self, X, y, **kwargs):
         """
             X: pandas DataFrame
             y: pandas Series
@@ -17,6 +17,7 @@ class Trainer():
         self.pipeline = None
         self.X = X
         self.y = y
+        self.kwargs = kwargs
 
     def set_pipeline(self):
         """defines the pipeline as a class attribute"""
@@ -40,6 +41,7 @@ class Trainer():
 
     def run(self):
         '''returns a trained pipelined model'''
+        self.set_pipeline()
         self.pipeline.fit(self.X, self.y)
 
     def evaluate(self, X_test, y_test):
