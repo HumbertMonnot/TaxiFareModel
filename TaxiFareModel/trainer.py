@@ -1,14 +1,20 @@
 from bleach import clean
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from TaxiFareModel.encoders import DistanceTransformer, TimeFeaturesEncoder
-from sklearn.linear_model import LinearRegression
+from TaxiFareModel.encoders import DistanceTransformer, TimeFeaturesEncoder, DistanceTransformer2
+from sklearn.linear_model import LinearRegression, Lasso, SGDRegressor, ElasticNet
 from sklearn.compose import ColumnTransformer
 from TaxiFareModel.utils import compute_rmse
 from TaxiFareModel.data import get_data, clean_data
 from sklearn.model_selection import train_test_split
+from mlflow.tracking import MlflowClient
+import mlflow
+from memoized_property import memoized_property
+import joblib
+
 
 class Trainer():
+    
     def __init__(self, X, y, **kwargs):
         """
             X: pandas DataFrame
@@ -16,13 +22,13 @@ class Trainer():
         """
         self.pipeline = None
         self.X = X
-        self.y = y
-        self.kwargs = kwargs
+        self.y = y        
+        self.model = kwargs.get("model", LinearRegression())
 
     def set_pipeline(self):
         """defines the pipeline as a class attribute"""
         dist_pipe = Pipeline([
-            ('dist_trans', DistanceTransformer()),
+            ('dist_trans', DistanceTransformer2()),
             ('stdscaler', StandardScaler())
         ])
         time_pipe = Pipeline([
@@ -35,7 +41,7 @@ class Trainer():
         ], remainder="drop")
         pipe = Pipeline([
             ('preproc', preproc_pipe),
-            ('linear_model', LinearRegression())
+            (f"{self.model}".rstrip("()"), self.model)
         ])
         self.pipeline = pipe
 
@@ -51,6 +57,34 @@ class Trainer():
         print(rmse)
         return rmse
 
+    @memoized_property
+    def mlflow_client(self):
+        MLFLOW_URI = "https://mlflow.lewagon.co/"
+        mlflow.set_tracking_uri(MLFLOW_URI)
+        return MlflowClient()
+
+    @memoized_property
+    def mlflow_experiment_id(self):
+        self.experiment_name = "[FR] [Bdx] [HumbertMonnot] LinearRegresion v2"
+        try:
+            return self.mlflow_client.create_experiment(self.experiment_name)
+        except BaseException:
+            return self.mlflow_client.get_experiment_by_name(self.experiment_name).experiment_id
+
+    @memoized_property
+    def mlflow_run(self):
+        return self.mlflow_client.create_run(self.mlflow_experiment_id)
+
+    def mlflow_log_param(self, key, value):
+        self.mlflow_client.log_param(self.mlflow_run.info.run_id, key, value)
+
+    def mlflow_log_metric(self, key, value):
+        self.mlflow_client.log_metric(self.mlflow_run.info.run_id, key, value)
+
+    def save_model(self, name):
+        """ Save the trained model into a model.joblib file """
+        joblib.dump(self.pipeline, name)
+
 
 if __name__ == "__main__":
     df = get_data()
@@ -64,12 +98,17 @@ if __name__ == "__main__":
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.15)
 
     # build pipeline
-    train = Trainer(X_train, y_train)
-    train.set_pipeline()
+    for estimator in [LinearRegression(), Lasso(), SGDRegressor(), ElasticNet()]:
+        train = Trainer(X_train, y_train)
 
-    # train the pipeline
-    train.run()
-
-    # evaluate the pipeline
-    rmse = train.evaluate(X_val, y_val)
-    print(rmse)
+        # train the pipeline
+        train.run()
+        #train.save_model(f"{estimator}".rstrip("()"))
+        train.evaluate(X_val, y_val)
+        
+        # evaluate the pipeline
+        #train.mlflow_log_param("model", estimator)
+        #train.mlflow_log_metric("RMSE", train.evaluate(X_val, y_val))
+        
+    experiment_id = train.mlflow_experiment_id
+    print(f"experiment URL: https://mlflow.lewagon.co/#/experiments/{experiment_id}")

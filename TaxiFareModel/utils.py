@@ -28,3 +28,23 @@ def haversine_vectorized(df,
 
 def compute_rmse(y_pred, y_true):
     return np.sqrt(((y_pred - y_true) ** 2).mean())
+
+def minkowski_distance_1(df, x1, x2, y1, y2):
+    delta_x = df[x1] - df[x2]
+    delta_y = df[y1] - df[y2]
+    return ((abs(delta_x) ** 1) + (abs(delta_y)) ** 1) ** (1 / 1)
+
+def minkowski_distance_2(df, x1, x2, y1, y2):
+    delta_x = df[x1] - df[x2]
+    delta_y = df[y1] - df[y2]
+    return ((abs(delta_x) ** 2) + (abs(delta_y)) ** 2) ** (1 / 2)
+
+def calculate_direction(df, d_lon, d_lat):
+    result = np.zeros(len(df[d_lon]))
+    l = np.sqrt(df[d_lon]**2 + df[d_lat]**2)
+    result[df[d_lon]>0] = (180/np.pi)*np.arcsin(df[d_lat][df[d_lon]>0]/l[df[d_lon]>0])
+    idx = (df[d_lon]<0) & (df[d_lat]>0)
+    result[idx] = 180 - (180/np.pi)*np.arcsin(df[d_lat][idx]/l[idx])
+    idx = (df[d_lon]<0) & (df[d_lat]<0)
+    result[idx] = -180 - (180/np.pi)*np.arcsin(df[d_lat][idx]/l[idx])
+    return result
